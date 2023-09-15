@@ -1,4 +1,4 @@
-package main
+\package main
 
 import (
 	"errors"
@@ -23,6 +23,7 @@ type Graph struct {
 	QueryString    string
 	GQSchemaConfig graphql.SchemaConfig
 	gqfields       graphql.Fields
+	gmfields       graphql.Fields
 	gqobj          *graphql.Object
 }
 
@@ -59,6 +60,44 @@ func New(dbinfo *[]DBinfo) *Graph {
 			},
 		},
 	)
+	// Define GML Fields
+	var gmfields = graphql.Fields{
+		"UpdateDB": &graphql.Field{
+			Type: graphql.NewList(gqobj),
+			Args: graphql.FieldConfigArgument{
+				"ID": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.Int),
+				},
+				"Name": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
+				},
+				"ComplexSetArgs": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.NewInputObject(graphql.InputObjectConfig{
+						Name: "ComplexSetArg",
+						Fields: graphql.InputObjectConfigFieldMap{
+							"C1param": &graphql.InputObjectFieldConfig{
+								Type: graphql.NewNonNull(graphql.String),
+							},
+							"C2param": &graphql.InputObjectFieldConfig{
+								Type: graphql.NewNonNull(graphql.String),
+							},
+						},
+					})),
+				},
+			},
+			Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				(*dbinfo)[0].ID, _ = p.Args["ID"].(int)
+				(*dbinfo)[0].Name, _ = p.Args["Name"].(string)
+				fmt.Printf("params: %+v\n", p.Args["ComplexSetArgs"])
+				a := p.Args["ComplexSetArgs"]
+				complexag := a.(map[string]interface{})
+				(*dbinfo)[0].Complex.C1param, _ = complexag["C1param"].(string)
+				(*dbinfo)[0].Complex.C2param, _ = complexag["C2param"].(string)
+
+				return []*DBinfo{&(*dbinfo)[0]}, nil
+			},
+		},
+	}
 
 	// Define GQL Fields
 	var gqfields = graphql.Fields{
@@ -112,14 +151,17 @@ func New(dbinfo *[]DBinfo) *Graph {
 	return &Graph{
 		MyDBinfo: dbinfo,
 		gqfields: gqfields,
+		gmfields: gmfields,
 		gqobj:    gqobj,
 	}
 }
 
 func (g *Graph) Query() (*graphql.Result, error) {
 	rootQuery := graphql.ObjectConfig{Name: "RootQuery", Fields: g.gqfields}
+	rootMutation := graphql.ObjectConfig{Name: "RootMutation", Fields: g.gmfields}
 	schemaConfig := graphql.SchemaConfig{
-		Query: graphql.NewObject(rootQuery),
+		Query:    graphql.NewObject(rootQuery),
+		Mutation: graphql.NewObject(rootMutation),
 	}
 	schema, err := graphql.NewSchema(schemaConfig)
 	if err != nil {
